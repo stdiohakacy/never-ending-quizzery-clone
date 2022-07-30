@@ -4,7 +4,16 @@
   "description": "A web quiz implemented with Docker Node.js, MongoDB, and NGINX containers",
   "main": "index.js",
   "scripts": {
-    "start": "npm run build && node ./index.js"
+    "build:htm": "pug -O ./src/html/data.json ./src/html/ -o ./static/",
+    "build:css": "postcss src/css/main.css -o static/css/main.css --no-map",
+    "build:es6": "rollup --config",
+    "build": "npm run build:htm && npm run build:css && npm run build:es6",
+    "watch:htm": "pug -O ./src/html/data.json ./src/html/ -o ./static/ --pretty -w",
+    "watch:css": "postcss ./src/css/main.css -o ./static/css/main.css --map --watch --poll --verbose",
+    "watch:es6": "rollup --config --sourcemap inline --watch --no-watch.clearScreen",
+    "watch:app": "nodemon --trace-warnings --inspect=0.0.0.0:9229 ./index.js",
+    "debug": "concurrently 'npm:watch:*'",
+    "start": "node ./index.js"
   },
   "author": "Craig Buckler",
   "license": "MIT",
