@@ -37,19 +37,19 @@ services:
       - "9229:9229"
     command: /bin/sh -c 'npm i && npm run debug'
 
-  nginx:
-    build:
-      context: ./nginx
-      dockerfile: nginx.Dockerfile
-    container_name: nginx
-    depends_on:
-      - nodejs
-    networks:
-      - quiznet
-    ports:
-      - "80:80"
-    logging:
-      driver: "none"
+  # nginx:
+  #   build:
+  #     context: ./nginx
+  #     dockerfile: nginx.Dockerfile
+  #   container_name: nginx
+  #   depends_on:
+  #     - nodejs
+  #   networks:
+  #     - quiznet
+  #   ports:
+  #     - "80:80"
+  #   logging:
+  #     driver: "none"
 
 volumes:
   quizdata:

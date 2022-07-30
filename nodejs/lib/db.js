@@ -1,140 +1,90 @@
-/*
-Quiz database logic
-*/
+const mongo = require('mongodb');
+const fetch = require('node-fetch');
+const lib = require('./lib');
 
-'use strict';
+const maxQuestions = 300;
+const maxApiFetch = 50;
+const maxApiCalls = 10;
+const mongoUrl = `mongodb://${ process.env.MONGO_USERNAME }:${ process.env.MONGO_PASSWORD }@${ process.env.MONGO_HOST }:${ process.env.MONGO_PORT }/`;
 
-const
+const client = new mongo.MongoClient(
+  mongoUrl,
+  { useNewUrlParser: true, useUnifiedTopology: true }
+);
 
-  maxQuestions = 300,
-  maxApiFetch = 50,
-  maxApiCalls = 10,
-
-  // MongoDB connect
-  mongo = require('mongodb'),
-
-  client = new mongo.MongoClient(
-    `mongodb://${ process.env.MONGO_USERNAME }:${ process.env.MONGO_PASSWORD }@${ process.env.MONGO_HOST }:${ process.env.MONGO_PORT }/`,
-    { useNewUrlParser: true, useUnifiedTopology: true }
-  );
-
-// database connection objects
 let db, quiz;
 
-// connect to MongoDB database
 (async () => {
-
   try {
-
     await client.connect();
     db = client.db( process.env.MONGO_DB );
-
-    // quiz collection
-    console.log(db);
     quiz = db.collection('quiz');
 
-    // initialize
-    if (!await init()) {
+    const initialDb = await init();
+    if (!initialDb) {
       throw 'no questions in database';
     }
-
   }
   catch (err) {
     console.log('database error', err);
   }
-
 })();
 
-
-// initialize database
 async function init() {
-
-  // question count
-  let qCount = await quiz.countDocuments();
-  if (qCount >= maxQuestions) return qCount;
-
+  let questionCount = await quiz.countDocuments();
+  if (questionCount >= maxQuestions) return questionCount;
   console.log('initializing quiz database...');
 
   // create indexes
-  if (!qCount) {
-
+  if (!questionCount) {
     await quiz.createIndexes([
       { key: { category: 1 }},
       { key: { question: 1 } },
       { key: { used: 1 } }
     ]);
-
   }
-
-  // fetch random questions from opentdb.com
-  const
-    fetch = require('node-fetch'),
-    lib = require('./lib'),
-    batch = quiz.initializeUnorderedBulkOp(),
-
-    maxReq = Math.min(maxApiFetch, maxQuestions - qCount),
-    quizApi = `https://opentdb.com/api.php?type=multiple&amount=${ maxReq }`;
+    const batch = quiz.initializeUnorderedBulkOp();
+    const maxRequest = Math.min(maxApiFetch, maxQuestions - questionCount);
+    const quizApi = `https://opentdb.com/api.php?type=multiple&amount=${ maxRequest }`;
 
   (await Promise.allSettled(
-
-    // make multiple API calls
-    Array( Math.min(maxApiCalls, Math.ceil((maxQuestions - qCount) / maxReq)) )
+    Array(Math.min(maxApiCalls, Math.ceil((maxQuestions - questionCount) / maxRequest)))
       .fill(quizApi)
       .map((u, i) => fetch(`${u}#${i}`))
-
-  )
-    .then(
-      // parse JSON
-      response => Promise.allSettled(
-        response.map(res => res.value && res.value.json())
-      )
     )
-    .then(
-      // extract questions
-      json => json.map(j => j && j.value && j.value.results || [])
-    ))
+    .then(response => Promise.allSettled(response.map(res => res.value && res.value.json())))
+    .then(json => json.map(j => j && j.value && j.value.results || [])))
     .flat()
     .forEach(q => {
+      let correct = lib.cleanString(q.correct_answer);
+      let newQuestion = {
+        category: lib.cleanString(q.category),
+        question: lib.cleanString(q.question),
+        answers:  q.incorrect_answers.map(i => lib.cleanString(i)).concat(correct).sort()
+      };
 
-      // format each question
-      let
-        correct = lib.cleanString(q.correct_answer),
-        newQ = {
-          category: lib.cleanString(q.category),
-          question: lib.cleanString(q.question),
-          answers:  q.incorrect_answers.map(i => lib.cleanString(i)).concat(correct).sort()
-        };
+      newQuestion.correct = newQuestion.answers.indexOf(correct);
 
-      newQ.correct = newQ.answers.indexOf(correct);
-
-      // database insert
       batch
         .find({ question: q.question })
         .upsert()
-        .update({ $set: newQ });
-
+        .update({ $set: newQuestion });
     });
 
   // update database
-  const
-    dbUpdate = await batch.execute(),
-    qAdded = dbUpdate.result.nUpserted;
-
-  qCount += qAdded;
+  const dbUpdate = await batch.execute();
+  const qAdded = dbUpdate.result.nUpserted;
+  questionCount += qAdded;
 
   console.log(`${ qAdded } questions added`);
-  console.log(`${ qCount } questions available`);
+  console.log(`${ questionCount } questions available`);
 
-  return qCount;
-
+  return questionCount;
 }
-
 
 // get next question
 module.exports.getQuestion = async () => {
-  console.log(process.env)
-  const
-    nextQ = await quiz.findOneAndUpdate(
+  const nextQuestion = await quiz.findOneAndUpdate(
       {},
       { $inc: { used: 1 }},
       {
@@ -142,7 +92,5 @@ module.exports.getQuestion = async () => {
         projection: { _id: 0, category: 1, question: 1, answers: 1, correct: 1 }
       }
     );
-
-  return (nextQ && nextQ.ok && nextQ.value) || null;
-
+  return (nextQuestion && nextQuestion.ok && nextQuestion.value) || null;
 };

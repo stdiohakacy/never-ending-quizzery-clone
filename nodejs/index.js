@@ -1,45 +1,26 @@
-
-// main application
-
-'use strict';
-
-// load environment
 require('dotenv').config();
+const quizDB = require('./lib/db');
+const port = process.env.NODE_PORT || 8000;
+const express = require('express');
+const app = express();
 
-const
-  // initialize database
-  quizDB = require('./lib/db'),
-
-  // default HTTP port
-  port = process.env.NODE_PORT || 8000,
-
-  // express
-  express = require('express'),
-  app = express();
-
-
-// static files
 app.use(express.static('./static'));
 
-// header middleware
 app.use((req, res, next) => {
-
   res.set({
     'Access-Control-Allow-Origin': '*',
     'Cache-Control': 'must-revalidate, max-age=0'
   });
   next();
-
 });
 
 // route: fetch a question
 app.get('/question', async (req, res) => {
-
-  const q = await quizDB.getQuestion();
-
-  if (q) res.json(q);
-  else res.status(500).send('service unavailable');
-
+  const questions = await quizDB.getQuestion();
+  if (questions) 
+    res.json(questions);
+  else 
+    res.status(500).send('service unavailable');
 });
 
 // start HTTP server
